@@ -1,0 +1,29 @@
+{
+  "name": "postgre-node-api",
+  "version": "1.0.0",
+  "description": "PostgreSQL NodeJS API for basis of RDMS",
+  "dependencies": {
+    "body-parser": "^1.17.1",
+    "express": "^4.15.2",
+    "expressjs": "^1.0.1",
+    "pg": "^6.1.5"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "start": "node app"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Raimmaster/PostgreNodeAPI.git"
+  },
+  "keywords": [
+    "postgre",
+    "api"
+  ],
+  "author": "rNexer, Raimmaster",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Raimmaster/PostgreNodeAPI/issues"
+  },
+  "homepage": "https://github.com/Raimmaster/PostgreNodeAPI#readme"
+}
