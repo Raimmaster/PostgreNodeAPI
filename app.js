@@ -454,7 +454,8 @@ app.get('/connection/:id/functions', function (req, res) {
     }
 });
 
-app.get('/connection/:id/functions/:fn_name/ddl', function (req, res) {
+
+app.get('/connection/:id/function/:fn_name/ddl', function (req, res) {
     let id = req.params.id;
     let fn_name = req.params.fn_name;
     if (connections.length == 0 || id >= connections.length)
@@ -463,13 +464,13 @@ app.get('/connection/:id/functions/:fn_name/ddl', function (req, res) {
         let cred = connectionsCredentials[id];
         let client = connections[id];
 
-        let sql = `select fn_get_function_definition(${fn_name});`;
+        let sql = `select fn_get_function_definition('${fn_name}');`;
 
         client.query(sql, function (err, result) {
             if (err) {
                 res.status(500).json(err);
             } else {
-                res.status(200).json(result.rows);
+                res.status(200).json(result.rows[0].fn_get_function_definition);
             }
         });
     }
