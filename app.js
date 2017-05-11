@@ -22,10 +22,10 @@ app.get('/', function (req, res) {
 });
 
 //QUERIES
-app.post('/query', function (req, res) {
-    let id = 0;
+app.post('/query/:id', function (req, res) {
+    let id = req.params.id;
     let sql = req.body.sql;
-    if (connections.length == 0)
+    if (connections.length == 0 || id >= connections.length)
         res.status(500).json("No connections availables");
     else {
         let client = connections[id];
@@ -92,7 +92,7 @@ app.delete('/connection:id', function (req, res) {
 
 //SESSIONS
 app.get("/sessions", function (req, res) {
-    if (connections.length == 0)
+    if (connections.length == 0 && id < connections.length)
         res.status(500).json("No connections availables");
     else {
         let client = connections[0];
@@ -107,21 +107,60 @@ app.get("/sessions", function (req, res) {
     }
 });
 
-//DATABASES
-app.get("/connection/:id/databases", function (req, res) {
-    let id = 0;
-    if (this.credentials.length == 0)
+//ALL
+app.delete('/connection/:id/drop/:objectType/:objectName', function(req,res){
+    let id = req.params.id;
+    let objType = req.params.objectType;
+    let objName = req.params.objectName;
+    console.log();
+    if (connections.length == 0 || id >= connections.length)
         res.status(500).json("No connections availables");
     else {
-        let cred = this.credentials[id];
-        let client = this.connections[id];
+        let cred = connectionsCredentials[id];
+        let client = connections[id];
 
-        let sql = `select datname from pg_database pd inner join pg_user pu on pd.datdba = pu.usesysid where pu.usename = ${cred.username}`;
+        let sql = `drop ${objType} ${objName};`;
+        if(objType == 'user'){
+            sql = `drop${objType} ${objName};`
+        }else if(objType == 'check' || objType == 'function'){
+            //nothing
+        }
+        // else if(objType == 'function'){
+        //     sql = ``;
+        // }
+
+        console.log(sql);
+
+        client.query(sql, function (err, result) {
+            if (err) {
+                console.log(err);
+                res.status(500).json(err);
+            } else {
+                console.log(result.rows);
+                res.status(200).json(result.rows.map(x => x.datname));
+            }
+        });
+    }
+});
+
+//DATABASES
+app.get("/connection/:id/databases", function (req, res) {
+    let id = req.params.id;
+    console.log();
+    if (connections.length == 0 || id >= connections.length)
+        res.status(500).json("No connections availables");
+    else {
+        let cred = connectionsCredentials[id];
+        let client = connections[id];
+
+        let sql = `select datname from pg_database pd inner join pg_user pu on pd.datdba = pu.usesysid where pu.usename = '${cred.username}'`;
+        console.log(sql);
 
         client.query(sql, function (err, result) {
             if (err) {
                 res.status(500).json(err);
             } else {
+                console.log(result.rows);
                 res.status(200).json(result.rows.map(x => x.datname));
             }
         });
@@ -129,13 +168,13 @@ app.get("/connection/:id/databases", function (req, res) {
 });
 
 app.post("/connection/:id/databases/:dbname", function (req, res) {
-    let id = 0;
+    let id = req.params.id;
     let dbname = req.params.dbname;
-    if (this.credentials.length == 0)
+    if (connections.length == 0 || id >= connections.length)
         res.status(500).json("No connections availables");
     else {
-        let cred = this.credentials[id];
-        let client = this.connections[id];
+        let cred = connectionsCredentials[id];
+        let client = connections[id];
 
         let sql = `create database ${dbname} owner ${cred.username}`;
 
@@ -150,23 +189,195 @@ app.post("/connection/:id/databases/:dbname", function (req, res) {
     }
 });
 
-//TABLES
-app.get('/connection/:id/tables', function (req, res) {
-    let id = 0;
-    if (this.credentials.length == 0)
+//SCHEMAS
+app.get('/connection/:id/schemas', function (req, res) {
+    let id = req.params.id;
+    if (connections.length == 0 || id >= connections.length)
         res.status(500).json("No connections availables");
     else {
-        let cred = this.credentials[id];
-        let client = this.connections[id];
+        let cred = connectionsCredentials[id];
+        let client = connections[id];
 
-        let sql = `select tablename from pg_tables where owner = ${cred.username}`;
+        let sql = `select pn.nspname from pg_namespace pn inner join pg_user pu on pu.usesysid= pn.nspowner where pu.usename = '${cred.username}'`;
+
+        client.query(sql, function (err, result) {
+            if (err) {
+                console.log(err);
+                res.status(500).json(err);
+            } else {
+                res.status(200).json(result.rows.map(x => x.nspname));
+            }
+        });
+    }
+});
+
+//TABLES
+app.get('/connection/:id/tables', function (req, res) {
+    let id = req.params.id;
+    if (connections.length == 0 || id >= connections.length)
+        res.status(500).json("No connections availables");
+    else {
+        let cred = connectionsCredentials[id];
+        let client = connections[id];
+
+        let sql = `select pt.tablename from pg_tables pt inner join pg_user pu on pu.usename= pt.tableowner where pu.usename = '${cred.username}'`;
 
         client.query(sql, function (err, result) {
             if (err) {
                 res.status(500).json(err);
             } else {
-                console.log(result);
                 res.status(200).json(result.rows.map(x => x.tablename));
+            }
+        });
+    }
+});
+
+app.get('/connection/:id/table/:tablename/cols', function (req, res) {
+    let id = req.params.id;
+    let table = req.params.tablename;
+    if (connections.length == 0 || id >= connections.length)
+        res.status(500).json("No connections availables");
+    else {
+        let cred = connectionsCredentials[id];
+        let client = connections[id];
+
+        let sql = `select column_name from information_schema.columns where table_name = '${table}'`;
+
+        client.query(sql, function (err, result) {
+            if (err) {
+                console.log(err);
+                res.status(500).json(err);
+            } else {
+                res.status(200).json(result.rows.map(x => x.column_name));
+            }
+        });
+    }
+});
+
+app.post('/connection/:id/table/:tablename/insert', function (req, res) {
+    let id = req.params.id;
+    let table = req.params.tablename;
+    let newRow = req.body.data;
+    if (connections.length == 0 || id >= connections.length)
+        res.status(500).json("No connections availables");
+    else {
+        let cred = connectionsCredentials[id];
+        let client = connections[id];
+
+        let cols = '';
+        let values = '';
+
+        for(let property in newRow){
+            if (newRow.hasOwnProperty(property)) {
+                cols += `${property}, `;
+                values += `'${newRow[property]}', `;
+            }
+        }
+
+        cols = cols.slice(0, -2);
+        values = values.slice(0, -2);
+
+        let sql = `insert into ${table} (${cols}) values (${values})`;
+        console.log(sql);
+        client.query(sql, function (err, result) {
+            if (err) {
+                console.log(err);
+                res.status(500).json(err);
+            } else {
+                res.status(200).json(result.rows.map(x => x.column_name));
+            }
+        });
+    }
+});
+
+app.put('/connection/:id/table/:tablename/update', function (req, res) {
+    let id = req.params.id;
+    let table = req.params.tablename;
+    let newRow = req.body.newData;
+    let oldRow = req.body.oldData;
+    if (connections.length == 0 || id >= connections.length)
+        res.status(500).json("No connections availables");
+    else {
+        let cred = connectionsCredentials[id];
+        let client = connections[id];
+
+        let set_st = '';
+        let where_st = '';
+
+        for(let property in newRow){
+            if (newRow.hasOwnProperty(property)) {
+                if(newRow[property] != oldRow[property])
+                    set_st += `${property} = '${newRow[property]}', `;
+                where_st += `${property} = '${oldRow[property]}' and `;
+            }
+        }
+
+        set_st = set_st.slice(0, -2);
+        where_st = where_st.slice(0, -4);
+
+        let sql = `update ${table} set ${set_st} where ${where_st}`;
+        console.log(sql);
+        client.query(sql, function (err, result) {
+            if (err) {
+                console.log(err);
+                res.status(500).json(err);
+            } else {
+                res.status(200).json(result.rows.map(x => x.column_name));
+            }
+        });
+    }
+});
+
+app.post('/connection/:id/table/:tablename/delete', function (req, res) {
+    let id = req.params.id;
+    let table = req.params.tablename;
+    let delRow = req.body.data;
+    if (connections.length == 0 || id >= connections.length)
+        res.status(500).json("No connections availables");
+    else {
+        let cred = connectionsCredentials[id];
+        let client = connections[id];
+
+        let sub_sql = '';
+
+        for(let property in delRow){
+            if (delRow.hasOwnProperty(property)) {
+                sub_sql = `${property} = '${delRow[property]}' and `;
+            }
+        }
+
+        sub_sql = sub_sql.slice(0, -4);
+
+        let sql = `delete from ${table} where ${sub_sql}`;
+        console.log(sql);
+        client.query(sql, function (err, result) {
+            if (err) {
+                console.log(err);
+                res.status(500).json(err);
+            } else {
+                res.status(200).json(result.rows.map(x => x.column_name));
+            }
+        });
+    }
+});
+
+app.get('/connection/:id/table/:tablename/ddl', function(req, res){
+    let id = req.params.id;
+    let table = req.params.tablename;
+    if (connections.length == 0 || id >= connections.length)
+        res.status(500).json("No connections availables");
+    else {
+        let cred = connectionsCredentials[id];
+        let client = connections[id];
+
+        let sql = `select get_table_ddl('${table}', '${cred.username}');`;
+
+        client.query(sql, function (err, result) {
+            if (err) {
+                console.log(err);
+                res.status(500).json(err);
+            } else {
+                res.status(200).json(result.rows[0].get_table_ddl);
             }
         });
     }
@@ -174,14 +385,14 @@ app.get('/connection/:id/tables', function (req, res) {
 
 //INDEXES
 app.get('/connection/:id/indexes', function (req, res) {
-    let id = 0;
-    if (this.credentials.length == 0)
+    let id = req.params.id;
+    if (connections.length == 0 || id >= connections.length)
         res.status(500).json("No connections availables");
     else {
-        let cred = this.credentials[id];
-        let client = this.connections[id];
+        let cred = connectionsCredentials[id];
+        let client = connections[id];
 
-        let sql = `select indexname from pg_indexes pi inner join pg_tables pt on pi.tablename = pt.tablename where pt.tableowner = ${cred.username}`;
+        let sql = `select indexname from pg_indexes pi inner join pg_tables pt on pi.tablename = pt.tablename where pt.tableowner = '${cred.username}'`;
 
         client.query(sql, function (err, result) {
             if (err) {
@@ -196,19 +407,19 @@ app.get('/connection/:id/indexes', function (req, res) {
 
 //CHECKS
 app.get('/connection/:id/checks', function (req, res) {
-    let id = 0;
-    if (this.credentials.length == 0)
+    let id = req.params.id;
+    if (connections.length == 0 || id >= connections.length)
         res.status(500).json("No connections availables");
     else {
-        let cred = this.credentials[id];
-        let client = this.connections[id];
+        let cred = connectionsCredentials[id];
+        let client = connections[id];
 
         let sql = `select 
-                    pci.conname 
-                    from pg_constraint pci 
-                    inner join pg_namespace pn on pci.connamespace = pn.oid 
-                    inner join pg_user pu on pu.usesysid = pn.nspowner
-                    where pci.contype = 'c' and pu.usename = ${cred.username}`;
+        pci.conname 
+        from pg_constraint pci 
+        inner join pg_namespace pn on pci.connamespace = pn.oid 
+        inner join pg_user pu on pu.usesysid = pn.nspowner
+        where pci.contype = 'c' and pu.usename = '${cred.username}'`;
 
         client.query(sql, function (err, result) {
             if (err) {
@@ -223,14 +434,14 @@ app.get('/connection/:id/checks', function (req, res) {
 
 //FUNCTIONS
 app.get('/connection/:id/functions', function (req, res) {
-    let id = 0;
-    if (this.credentials.length == 0)
+    let id = req.params.id;
+    if (connections.length == 0 || id >= connections.length)
         res.status(500).json("No connections availables");
     else {
-        let cred = this.credentials[id];
-        let client = this.connections[id];
+        let cred = connectionsCredentials[id];
+        let client = connections[id];
 
-        let sql = `select proname from pg_proc pp inner join pg_user pu on pu.usesysid = pp.proowner where pu.usename = ${cred.username}`;
+        let sql = `select proname from pg_proc pp inner join pg_user pu on pu.usesysid = pp.proowner where pu.usename = '${cred.username}'`;
 
         client.query(sql, function (err, result) {
             if (err) {
@@ -244,13 +455,13 @@ app.get('/connection/:id/functions', function (req, res) {
 });
 
 app.get('/connection/:id/functions/:fn_name/ddl', function (req, res) {
-    let id = 0;
+    let id = req.params.id;
     let fn_name = req.params.fn_name;
-    if (this.credentials.length == 0)
+    if (connections.length == 0 || id >= connections.length)
         res.status(500).json("No connections availables");
     else {
-        let cred = this.credentials[id];
-        let client = this.connections[id];
+        let cred = connectionsCredentials[id];
+        let client = connections[id];
 
         let sql = `select fn_get_function_definition(${fn_name});`;
 
@@ -266,14 +477,14 @@ app.get('/connection/:id/functions/:fn_name/ddl', function (req, res) {
 
 //VIEWS
 app.get('/connection/:id/views', function (req, res) {
-    let id = 0;
-    if (this.credentials.length == 0)
+    let id = req.params.id;
+    if (connections.length == 0 || id >= connections.length)
         res.status(500).json("No connections availables");
     else {
-        let cred = this.credentials[id];
-        let client = this.connections[id];
+        let cred = connectionsCredentials[id];
+        let client = connections[id];
 
-        let sql = `select viewname from pg_views where viewowner = ${cred.username}`;
+        let sql = `select viewname from pg_views where viewowner = '${cred.username}'`;
 
         client.query(sql, function (err, result) {
             if (err) {
@@ -288,12 +499,12 @@ app.get('/connection/:id/views', function (req, res) {
 
 //USERS
 app.get('/connection/:id/users', function (req, res) {
-    let id = 0;
-    if (this.credentials.length == 0)
+    let id = req.params.id;
+    if (connections.length == 0 || id >= connections.length)
         res.status(500).json("No connections availables");
     else {
-        let cred = this.credentials[id];
-        let client = this.connections[id];
+        let cred = connectionsCredentials[id];
+        let client = connections[id];
 
         let sql = `select usename from pg_user`;
 
@@ -310,14 +521,14 @@ app.get('/connection/:id/users', function (req, res) {
 
 //TRIGERS
 app.get('/connection/:id/trigers', function (req, res) {
-    let id = 0;
-    if (this.credentials.length == 0)
+    let id = req.params.id;
+    if (connections.length == 0 || id >= connections.length)
         res.status(500).json("No connections availables");
     else {
-        let cred = this.credentials[id];
-        let client = this.connections[id];
+        let cred = connectionsCredentials[id];
+        let client = connections[id];
 
-        let sql = `select tgname from pg_trigger ptr inner join pg_class pc on pc.oid = ptr.tgrelid inner join pg_user pu on pu.usesysid = pc.relowner where pu.usename = ${cred.username}`;
+        let sql = `select tgname from pg_trigger ptr inner join pg_class pc on pc.oid = ptr.tgrelid inner join pg_user pu on pu.usesysid = pc.relowner where pu.usename = '${cred.username}'`;
 
         client.query(sql, function (err, result) {
             if (err) {
